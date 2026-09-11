@@ -1,3 +1,4 @@
+// src/config/db.js
 const { Pool } = require('pg');
 require('dotenv').config();
 
@@ -13,6 +14,4 @@ pool.on('connect', () => {
     console.log('Base de datos conectada exitosamente a donum_db');
 });
 
-module.exports = {
-    query: (text, params) => pool.query(text, params),
-};
+module.exports = pool;

@@ -1,15 +1,21 @@
 const express = require('express');
 require('dotenv').config();
-const db = require('./db');
+const db = require('./config/db');
+const webhookRoutes = require('./routes/webhookRoutes');
+const productRoutes = require('./routes/productRoutes');
+const orderRoutes = require('./routes/orderRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-app.use(require('./webhook'));
+// Registrar Rutas
+app.use('/api', webhookRoutes);
+app.use('/api', productRoutes);
+app.use('/api', orderRoutes);
 
-// Ruta de prueba para verificar que el servidor y la BD responden
+// Ruta de salud del sistema
 app.get('/api/health', async (req, res) => {
     try {
         const result = await db.query('SELECT NOW()');
