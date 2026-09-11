@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { fulfillOrderJIT } = require('../services/supplierService'); // 👈 Importar el servicio JIT
 
 const handleBdvWebhook = async (req, res) => {
     try {
@@ -27,9 +28,6 @@ const handleBdvWebhook = async (req, res) => {
 
         console.log(`Pago móvil recibido de referencia: ${referenciaBancoOrdenante} por un monto de ${monto} VES`);
 
-        // ... dentro de handleBdvWebhook, después de verificar que no sea duplicado:
-
-        // Buscar si existe una orden pendiente con esa referencia exacta o registrarla de emergencia
         let orderResult = await db.query(
             'SELECT * FROM orders WHERE bank_reference = $1',
             [referenciaBancoOrdenante]
@@ -46,7 +44,7 @@ const handleBdvWebhook = async (req, res) => {
                 });
             }
 
-            // Actualizar la orden a COMPLETED
+            // 1. Actualizar la orden a COMPLETED en la base de datos
             await db.query(
                 'UPDATE orders SET status = $1 WHERE id = $2',
                 ['COMPLETED', order.id]
@@ -54,9 +52,19 @@ const handleBdvWebhook = async (req, res) => {
 
             console.log(`¡Orden #${order.id} completada automáticamente por pago móvil!`);
 
-            // AQUÍ DISPARARÍAMOS EL SERVICIO JIT (Despacho del producto digital)
+            // 2. DISPARAR EL SERVICIO JIT AUTOMÁTICAMENTE 🚀
+            if (order.product_id) {
+                const jitResult = await fulfillOrderJIT(order.product_id, order.customer_phone);
+                if (jitResult.success) {
+                    console.log(`[JIT] Producto entregado al cliente con éxito. Código: ${jitResult.code}`);
+                    // Opcional: Aquí podrías guardar el código en una columna de la base de datos de la orden
+                } else {
+                    console.error(`[JIT] Alerta: El pago fue aprobado pero falló el despacho automático.`);
+                }
+            }
+
         } else {
-            // Si el usuario pagó primero sin registrar la orden previa, la creamos de forma directa
+            // Si pagó directo sin registrar orden previa
             await db.query(
                 'INSERT INTO orders (bank_reference, amount, status) VALUES ($1, $2, $3)',
                 [referenciaBancoOrdenante, monto, 'COMPLETED']
