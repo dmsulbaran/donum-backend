@@ -53,11 +53,19 @@ const handleBdvWebhook = async (req, res) => {
             console.log(`¡Orden #${order.id} completada automáticamente por pago móvil!`);
 
             // 2. DISPARAR EL SERVICIO JIT AUTOMÁTICAMENTE 🚀
+            // 2. DISPARAR EL SERVICIO JIT AUTOMÁTICAMENTE 🚀
             if (order.product_id) {
                 const jitResult = await fulfillOrderJIT(order.product_id, order.customer_phone);
                 if (jitResult.success) {
                     console.log(`[JIT] Producto entregado al cliente con éxito. Código: ${jitResult.code}`);
-                    // Opcional: Aquí podrías guardar el código en una columna de la base de datos de la orden
+
+                    // 👈 Guardar el código digital generado en la base de datos
+                    await db.query(
+                        'UPDATE orders SET digital_code = $1 WHERE id = $2',
+                        [jitResult.code, order.id]
+                    );
+                    console.log(`[Database] Código digital ${jitResult.code} guardado en la Orden #${order.id}`);
+
                 } else {
                     console.error(`[JIT] Alerta: El pago fue aprobado pero falló el despacho automático.`);
                 }
