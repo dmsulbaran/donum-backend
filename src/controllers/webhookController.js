@@ -59,18 +59,26 @@ const handleBdvWebhook = async (req, res) => {
                 if (jitResult.success) {
                     console.log(`[JIT] Producto entregado al cliente con éxito. Código: ${jitResult.code}`);
 
-                    // 👈 Guardar el código digital generado en la base de datos
+                    // Guardar el código digital generado en la orden
                     await db.query(
                         'UPDATE orders SET digital_code = $1 WHERE id = $2',
                         [jitResult.code, order.id]
                     );
                     console.log(`[Database] Código digital ${jitResult.code} guardado en la Orden #${order.id}`);
-                    // 📱 3. DISPARAR LA NOTIFICACIÓN WHATSAPP SIMULADA 🚀
-                    // Buscamos el nombre del producto para que el mensaje sea más profesional
+
+                    // 📉 3. DESCONTAR STOCK DEL PRODUCTO 📦
+                    await db.query(
+                        'UPDATE products SET stock = stock - 1 WHERE id = $1',
+                        [order.product_id]
+                    );
+                    console.log(`[Database] Stock actualizado: se restó 1 unidad al producto ID #${order.product_id}`);
+
+                    // 📱 4. DISPARAR LA NOTIFICACIÓN WHATSAPP SIMULADA 🚀
                     const productRes = await db.query('SELECT name FROM products WHERE id = $1', [order.product_id]);
                     const productTitle = productRes.rows.length > 0 ? productRes.rows[0].name : 'Producto Digital Donum';
 
                     await sendWhatsAppNotification(order.customer_phone, productTitle, jitResult.code);
+
                 } else {
                     console.error(`[JIT] Alerta: El pago fue aprobado pero falló el despacho automático.`);
                 }

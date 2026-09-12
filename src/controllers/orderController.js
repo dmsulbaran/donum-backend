@@ -11,6 +11,10 @@ const createOrder = async (req, res) => {
         }
 
         const product = productCheck.rows[0];
+        // 👈 Validación de stock
+        if (product.stock <= 0) {
+            return res.status(400).json({ status: 'error', message: 'Lo sentimos, este producto está agotado.' });
+        }
 
         // Insertar la orden como pendiente vinculada al pago por referencia
         const newOrder = await db.query(
