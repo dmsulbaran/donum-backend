@@ -1,5 +1,5 @@
 const db = require('../config/db');
-const { fulfillOrderJIT } = require('../services/supplierService'); // 👈 Importar el servicio JIT
+const { fulfillOrderBitrefillJIT } = require('../services/bitrefillService'); // 👈 Importamos el servicio de Bitrefill
 const { sendWhatsAppNotification } = require('../services/notificationService');
 
 const handleBdvWebhook = async (req, res) => {
@@ -12,6 +12,14 @@ const handleBdvWebhook = async (req, res) => {
                 codigo: "99",
                 mensajeCliente: "Corrija el API KEY",
                 mensajeSistema: "Error en API KEY"
+            });
+        }
+        // 🛡️ Protección extra por si req.body llega vacío
+        if (!req.body) {
+            return res.status(400).json({
+                codigo: "99",
+                mensajeCliente: "Datos inválidos",
+                mensajeSistema: "El cuerpo de la petición (req.body) está vacío"
             });
         }
 
@@ -45,42 +53,44 @@ const handleBdvWebhook = async (req, res) => {
                 });
             }
 
-            // 1. Actualizar la orden a COMPLETED en la base de datos
+            // 1. Actualizar la orden a COMPLETED en la base de datos (Confirmamos que los bolívares entraron)
             await db.query(
                 'UPDATE orders SET status = $1 WHERE id = $2',
                 ['COMPLETED', order.id]
             );
 
-            console.log(`¡Orden #${order.id} completada automáticamente por pago móvil!`);
+            console.log(`¡Orden #${order.id} completada automáticamente por pago móvil local!`);
 
-            // 2. DISPARAR EL SERVICIO JIT AUTOMÁTICAMENTE 🚀
+            // 2. DISPARAR LA COMPRA AUTOMÁTICA EN BITREFILL POR DETRÁS (Usando nuestros fondos en USDT) 🚀
             if (order.product_id) {
-                const jitResult = await fulfillOrderJIT(order.product_id, order.customer_phone);
-                if (jitResult.success) {
-                    console.log(`[JIT] Producto entregado al cliente con éxito. Código: ${jitResult.code}`);
+                const jitResult = await fulfillOrderBitrefillJIT(order.product_id, order.customer_phone);
 
-                    // Guardar el código digital generado en la orden
+                if (jitResult.success) {
+                    console.log(`[Bitrefill JIT] Producto adquirido con éxito. Código: ${jitResult.code}`);
+
+                    // Guardar el código digital obtenido de Bitrefill en la orden
                     await db.query(
                         'UPDATE orders SET digital_code = $1 WHERE id = $2',
                         [jitResult.code, order.id]
                     );
-                    console.log(`[Database] Código digital ${jitResult.code} guardado en la Orden #${order.id}`);
+                    console.log(`[Database] Código digital guardado en la Orden #${order.id}`);
 
-                    // 📉 3. DESCONTAR STOCK DEL PRODUCTO 📦
+                    // 📉 3. DESCONTAR STOCK LOCAL DEL PRODUCTO 📦
                     await db.query(
                         'UPDATE products SET stock = stock - 1 WHERE id = $1',
                         [order.product_id]
                     );
                     console.log(`[Database] Stock actualizado: se restó 1 unidad al producto ID #${order.product_id}`);
 
-                    // 📱 4. DISPARAR LA NOTIFICACIÓN WHATSAPP SIMULADA 🚀
+                    // 📱 4. DISPARAR LA NOTIFICACIÓN WHATSAPP AL CLIENTE 🚀
                     const productRes = await db.query('SELECT name FROM products WHERE id = $1', [order.product_id]);
                     const productTitle = productRes.rows.length > 0 ? productRes.rows[0].name : 'Producto Digital Donum';
 
                     await sendWhatsAppNotification(order.customer_phone, productTitle, jitResult.code);
 
                 } else {
-                    console.error(`[JIT] Alerta: El pago fue aprobado pero falló el despacho automático.`);
+                    console.error(`[Bitrefill JIT] Alerta crítica: El pago en bolívares entró, pero falló la compra automática en Bitrefill: ${jitResult.error}`);
+                    // Aquí puedes registrar la orden en una tabla de incidencias o marcarla para revisión manual
                 }
             }
 

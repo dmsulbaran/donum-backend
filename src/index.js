@@ -4,6 +4,8 @@ const db = require('./config/db');
 const webhookRoutes = require('./routes/webhookRoutes');
 const productRoutes = require('./routes/productRoutes');
 const orderRoutes = require('./routes/orderRoutes');
+const bitrefillTestRoutes = require('./routes/bitrefillTestRoutes');
+const { calculateProductPriceInVES } = require('./services/pricingService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,6 +16,7 @@ app.use(express.json());
 app.use('/api', webhookRoutes);
 app.use('/api', productRoutes);
 app.use('/api', orderRoutes);
+app.use('/api', bitrefillTestRoutes);
 
 // Ruta de salud del sistema
 app.get('/api/health', async (req, res) => {
