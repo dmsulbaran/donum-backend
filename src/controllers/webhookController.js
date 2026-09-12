@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { fulfillOrderJIT } = require('../services/supplierService'); // 👈 Importar el servicio JIT
+const { sendWhatsAppNotification } = require('../services/notificationService');
 
 const handleBdvWebhook = async (req, res) => {
     try {
@@ -53,7 +54,6 @@ const handleBdvWebhook = async (req, res) => {
             console.log(`¡Orden #${order.id} completada automáticamente por pago móvil!`);
 
             // 2. DISPARAR EL SERVICIO JIT AUTOMÁTICAMENTE 🚀
-            // 2. DISPARAR EL SERVICIO JIT AUTOMÁTICAMENTE 🚀
             if (order.product_id) {
                 const jitResult = await fulfillOrderJIT(order.product_id, order.customer_phone);
                 if (jitResult.success) {
@@ -65,7 +65,12 @@ const handleBdvWebhook = async (req, res) => {
                         [jitResult.code, order.id]
                     );
                     console.log(`[Database] Código digital ${jitResult.code} guardado en la Orden #${order.id}`);
+                    // 📱 3. DISPARAR LA NOTIFICACIÓN WHATSAPP SIMULADA 🚀
+                    // Buscamos el nombre del producto para que el mensaje sea más profesional
+                    const productRes = await db.query('SELECT name FROM products WHERE id = $1', [order.product_id]);
+                    const productTitle = productRes.rows.length > 0 ? productRes.rows[0].name : 'Producto Digital Donum';
 
+                    await sendWhatsAppNotification(order.customer_phone, productTitle, jitResult.code);
                 } else {
                     console.error(`[JIT] Alerta: El pago fue aprobado pero falló el despacho automático.`);
                 }
